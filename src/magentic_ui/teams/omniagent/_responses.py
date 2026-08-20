@@ -44,6 +44,7 @@ from ._compaction import (
     extract_summary,
 )
 from ._messages import Message, assistant_msg, system_msg, user_msg
+from ._parse import rehydrate_native_tool_calls
 
 if TYPE_CHECKING:
     from openai.types.chat import ChatCompletion
@@ -372,7 +373,10 @@ class OmniResponses:
         # yields a result on the success path.
         if response is None:
             raise RuntimeError("_call_api returned without yielding a completion")
-        text = response.choices[0].message.content or ""
+        # Some OpenAI-compatible servers (e.g. mlx_lm.server) peel
+        # <tool_call> markers into message.tool_calls; rehydrate so the
+        # text parser still sees them.
+        text = rehydrate_native_tool_calls(response.choices[0].message)
 
         usage = response.usage
         if usage:

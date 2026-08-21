@@ -83,6 +83,61 @@ def extract_answer(response: str) -> str | None:
     return response[start:].strip()
 
 
+def rehydrate_native_tool_calls(message: Any) -> str:
+    """Merge OpenAI-native ``tool_calls`` back into MagenticLite XML content.
+
+    Some OpenAI-compatible servers (notably ``mlx_lm.server``) detect the
+    model's ``<tool_call>...</tool_call>`` markers, move them into
+    ``message.tool_calls``, and leave only prose in ``message.content``.
+    OmniAgent parses tool calls from content text, so reconstruct the XML
+    protocol here when native ``tool_calls`` are present and content lacks
+    tags.
+    """
+    text = getattr(message, "content", None)
+    if text is None and isinstance(message, dict):
+        text = message.get("content")
+    if not isinstance(text, str):
+        text = "" if text is None else str(text)
+
+    tool_calls = getattr(message, "tool_calls", None)
+    if tool_calls is None and isinstance(message, dict):
+        tool_calls = message.get("tool_calls")
+    if not tool_calls:
+        return text
+
+    # Content already carries the XML protocol — leave it alone.
+    if "<tool_call>" in text:
+        return text
+
+    parts: list[str] = []
+    if text.strip():
+        parts.append(text.rstrip())
+
+    for tc in tool_calls:
+        fn = getattr(tc, "function", None)
+        if fn is None and isinstance(tc, dict):
+            fn = tc.get("function")
+        if isinstance(fn, dict):
+            name = fn.get("name") or ""
+            arguments: Any = fn.get("arguments", {})
+        else:
+            name = getattr(fn, "name", None) or ""
+            arguments = getattr(fn, "arguments", {}) if fn is not None else {}
+
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {"raw": arguments}
+
+        payload = {"name": name, "arguments": arguments}
+        parts.append(
+            f"<tool_call>{json.dumps(payload, ensure_ascii=False)}</tool_call>"
+        )
+
+    return "\n".join(parts)
+
+
 def _extract_thoughts(response: str) -> str:
     """Return text before the first structured tag."""
     thoughts = response

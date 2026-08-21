@@ -4,12 +4,15 @@ Covers single-call, multi-call, ast fallback, parse errors, and the
 answer-vs-tool-call precedence rule.
 """
 
+from types import SimpleNamespace
+
 from magentic_ui.teams.omniagent._parse import (
     ParsedResponse,
     ParsedToolCall,
     ParseError,
     extract_answer,
     parse_response,
+    rehydrate_native_tool_calls,
 )
 
 
@@ -163,3 +166,86 @@ def test_parsed_response_fields() -> None:
     """Lock the shape: any future field changes show up here first."""
     pr = ParsedResponse(thoughts="t", tool_call_blocks=[], answer=None)
     assert pr._fields == ("thoughts", "tool_call_blocks", "answer")
+
+
+# ---------------------------------------------------------------------------
+# Native OpenAI tool_calls → MagenticLite XML (mlx_lm.server etc.)
+# ---------------------------------------------------------------------------
+
+
+class TestRehydrateNativeToolCalls:
+    def test_rehydrates_when_content_lacks_tags(self) -> None:
+        message = SimpleNamespace(
+            content="I will delegate this.\n",
+            tool_calls=[
+                SimpleNamespace(
+                    function=SimpleNamespace(
+                        name="delegate_cua",
+                        arguments='{"task": "open https://example.com", "context": ""}',
+                    )
+                )
+            ],
+        )
+        text = rehydrate_native_tool_calls(message)
+        assert "I will delegate this." in text
+        assert "<tool_call>" in text
+        parsed = parse_response(text)
+        assert _calls(parsed) == [
+            {
+                "name": "delegate_cua",
+                "arguments": {"task": "open https://example.com", "context": ""},
+            }
+        ]
+
+    def test_leaves_content_alone_when_xml_already_present(self) -> None:
+        original = (
+            "thinking\n"
+            '<tool_call>{"name": "bash", "arguments": {"command": "ls"}}</tool_call>'
+        )
+        message = SimpleNamespace(
+            content=original,
+            tool_calls=[
+                SimpleNamespace(
+                    function=SimpleNamespace(
+                        name="bash",
+                        arguments='{"command": "pwd"}',
+                    )
+                )
+            ],
+        )
+        assert rehydrate_native_tool_calls(message) == original
+
+    def test_empty_content_with_only_tool_calls(self) -> None:
+        message = SimpleNamespace(
+            content="",
+            tool_calls=[
+                SimpleNamespace(
+                    function=SimpleNamespace(
+                        name="delegate_cua",
+                        arguments='{"task": "go"}',
+                    )
+                )
+            ],
+        )
+        text = rehydrate_native_tool_calls(message)
+        assert text.startswith("<tool_call>")
+        assert _calls(parse_response(text)) == [
+            {"name": "delegate_cua", "arguments": {"task": "go"}}
+        ]
+
+    def test_dict_shaped_message(self) -> None:
+        message = {
+            "content": "ok",
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": "bash",
+                        "arguments": '{"command": "echo hi"}',
+                    }
+                }
+            ],
+        }
+        text = rehydrate_native_tool_calls(message)
+        assert _calls(parse_response(text)) == [
+            {"name": "bash", "arguments": {"command": "echo hi"}}
+        ]

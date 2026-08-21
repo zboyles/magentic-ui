@@ -8,6 +8,14 @@ from pathlib import Path
 import logging
 
 from ..version import VERSION
+from .host_proxy import (
+    DEFAULT_LISTEN_HOST as HOST_PROXY_LISTEN_HOST,
+    DEFAULT_LISTEN_PORT as HOST_PROXY_LISTEN_PORT,
+    log_sidecar_banner,
+    origin_from_url,
+    run_foreground,
+    start_background,
+)
 
 # Configure basic logging to show only errors
 logging.basicConfig(level=logging.ERROR)
@@ -80,6 +88,21 @@ def main(
         "--reset-config",
         help="Clear saved model config so onboarding runs again.",
     ),
+    host_proxy: Optional[int] = typer.Option(
+        None,
+        "--host-proxy",
+        help=(
+            "Local web-app port to expose to the Quicksand browser "
+            "(e.g. 3000). Starts an origin-rewrite proxy so guest "
+            "http://10.0.2.2:<listen-port> is presented to the app as "
+            "http://localhost:<port>."
+        ),
+    ),
+    host_proxy_listen_port: int = typer.Option(
+        HOST_PROXY_LISTEN_PORT,
+        "--host-proxy-listen-port",
+        help="Host port the origin-rewrite proxy binds (default 3100).",
+    ),
 ):
     """
     MagenticLite: A human-centered interface for web agents.
@@ -105,6 +128,8 @@ def main(
             config=config,
             fara_agent=fara_agent,
             reset_config=reset_config,
+            host_proxy=host_proxy,
+            host_proxy_listen_port=host_proxy_listen_port,
         )
 
 
@@ -119,6 +144,8 @@ def run_ui(
     config: Optional[str],
     fara_agent: bool,
     reset_config: bool = False,
+    host_proxy: Optional[int] = None,
+    host_proxy_listen_port: int = HOST_PROXY_LISTEN_PORT,
 ):
     """
     Core logic to run the Magentic-UI web application.
@@ -159,6 +186,26 @@ def run_ui(
     if config:
         env_vars["_CONFIG"] = config
 
+    if host_proxy is not None:
+        upstream_url = f"http://127.0.0.1:{host_proxy}"
+        try:
+            upstream_origin = origin_from_url(upstream_url)
+            start_background(
+                listen_host="0.0.0.0",
+                listen_port=host_proxy_listen_port,
+                upstream_url=upstream_url,
+            )
+        except OSError as exc:
+            typer.echo(
+                f"Failed to bind host-proxy on port {host_proxy_listen_port}: {exc}",
+                err=True,
+            )
+            raise typer.Exit(code=1) from exc
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=2) from exc
+        log_sidecar_banner(host_proxy_listen_port, upstream_url, upstream_origin)
+
     # Create a temporary environment file to share with the Uvicorn process.
     # Magentic-UI runs single-process (WS connections, sandbox manager, and
     # session token all live in per-process memory).
@@ -177,6 +224,43 @@ def run_ui(
         if reload
         else None,
         env_file=env_file_path,  # Pass environment variables via file
+    )
+
+
+@app.command("host-proxy")
+def host_proxy_cmd(
+    upstream_port: int = typer.Option(
+        3000,
+        "--upstream-port",
+        help="Port of the local web app on the host (e.g. 3000).",
+    ),
+    listen_port: int = typer.Option(
+        HOST_PROXY_LISTEN_PORT,
+        "--listen-port",
+        help="Port the proxy binds on the host (Quicksand uses 10.0.2.2:<this>).",
+    ),
+    listen_host: str = typer.Option(
+        HOST_PROXY_LISTEN_HOST,
+        "--listen-host",
+        help="Bind address. 0.0.0.0 is required so the VM can reach the proxy.",
+    ),
+    upstream: Optional[str] = typer.Option(
+        None,
+        "--upstream",
+        help="Full upstream URL. Overrides --upstream-port when set.",
+    ),
+) -> None:
+    """Expose a localhost web app to the Quicksand browser with origin rewrite."""
+    upstream_url = upstream or f"http://127.0.0.1:{upstream_port}"
+    try:
+        origin_from_url(upstream_url)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from exc
+    run_foreground(
+        listen_host=listen_host,
+        listen_port=listen_port,
+        upstream_url=upstream_url,
     )
 
 

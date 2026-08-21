@@ -10,6 +10,8 @@ cp config.yaml.example config.yaml
 magentic-ui --port 8081 --config config.yaml
 ```
 
+To let the agent browser reach a web app running on your machine (for example `localhost:3000`), pass `--host-proxy` with that port. MagenticLite starts an origin-rewrite proxy; in the Quicksand browser open `http://10.0.2.2:3100`. See [Troubleshooting](./troubleshooting.md#localhost-web-app-is-unreachable-from-the-agent-browser).
+
 Each option below shows both the YAML key and (where applicable) the equivalent place in the UI.
 
 ## How configuration is stored

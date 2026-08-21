@@ -82,3 +82,24 @@ agent_mode: all
 #     max_rounds: 30   # OmniAgent rounds per batch (default 100)
 #   web_surfer:
 #     max_rounds: 100  # Browser use actions per batch (default 100)
+
+# ---------------------------------------------------------------------------
+# Optional: Apple Silicon MLX (see docs/model-hosting-guide.md Option D)
+# ---------------------------------------------------------------------------
+# After `uv pip install "magentic_ui[mlx]"` and `magentic-ui mlx-serve`:
+#
+# model_config_omni: &omni
+#   provider: OpenAIChatCompletionClient
+#   config:
+#     model: mlx-community/MagenticBrain-8bit
+#     base_url: http://127.0.0.1:8100/v1
+#     api_key: not-needed
+#     max_retries: 5
+#
+# model_config_fara: &fara
+#   provider: OpenAIChatCompletionClient
+#   config:
+#     model: mlx-community/Fara1.5-9B-8bit
+#     base_url: http://127.0.0.1:8101/v1
+#     api_key: not-needed
+#     max_retries: 5

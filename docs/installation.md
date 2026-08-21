@@ -85,6 +85,10 @@ source .venv/bin/activate
 # Install the latest 0.2.x release from PyPI
 uv pip install "magentic_ui>=0.2.0"
 
+# Optional (Apple Silicon only): on-device MagenticBrain + Fara via MLX
+# uv pip install "magentic_ui[mlx]"
+# magentic-ui mlx-serve   # then see docs/model-hosting-guide.md Option D
+
 # Run
 magentic-ui --port 8081
 ```

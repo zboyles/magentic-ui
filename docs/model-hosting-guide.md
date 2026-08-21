@@ -5,6 +5,7 @@ MagenticLite talks to models through servers that expose an **OpenAI-compatible 
 - **Hugging Face Inference Endpoints.** Managed GPU hosting, billed per minute. Walked through in [Option A](#option-a-hugging-face-inference-endpoints) below.
 - **Bring your own GPU.** Run the models yourself with vLLM on GPU machines you manage. Walked through in [Option B](#option-b-bring-your-own-gpu-with-vllm) below.
 - **Microsoft Foundry Managed Compute.** Managed GPU hosting on Azure, billed per hour. Walked through in [Option C](#option-c-microsoft-foundry-managed-compute) below.
+- **Apple Silicon (MLX).** On-device MagenticBrain + Fara via `mlx_lm.server` / `mlx_vlm.server`. Walked through in [Option D](#option-d-apple-silicon-with-mlx) below.
 
 Whichever path you pick, you end up with the same three values to paste into MagenticLite's onboarding (or into **Settings → Models**): an OpenAI-compatible URL, a model name, and an API key.
 
@@ -176,6 +177,67 @@ Click **Verify & Save**. See [Verification fails](#verification-fails) below if 
 Foundry Managed Compute deployments **do not scale to zero**. The VM stays allocated and billed by the hour for as long as the deployment exists, whether or not traffic is flowing. An A100 deployment in East US 2 runs roughly $3–4 per hour at list price (H100 is roughly twice that); check the [Azure VM pricing page](https://azure.microsoft.com/pricing/details/virtual-machines/linux/) for current rates in your region. Multiply by the number of deployments you keep running.
 
 To stop the meter, **delete the deployment** from the **Models + endpoints** page. Redeploying from the catalog later takes the same ~15–20 minutes.
+
+---
+
+## Option D: Apple Silicon with MLX
+
+On an Apple Silicon Mac you can serve the MagenticLite models locally with [MLX](https://github.com/ml-explore/mlx). MagenticLite still talks HTTP OpenAI Chat Completions — it does not load MLX weights itself. This path starts two small servers that expose `/v1/chat/completions`.
+
+This is **not** a replacement for the vLLM / Foundry options above. `mlx_lm.server` is a basic development server, not a production inference stack.
+
+### Prerequisites
+
+- macOS on Apple Silicon (the extra is skipped on other platforms).
+- MagenticLite already installed in a venv as in the [Installation](./installation.md) guide.
+- Enough unified memory to hold **both** models plus MagenticLite and the Quicksand VM. Roughly **32 GB is tight**; **64 GB+ is comfortable**.
+
+### D1. Install the MLX extra
+
+From the same venv you use to run `magentic-ui`:
+
+```bash
+uv pip install "magentic_ui[mlx]"
+```
+
+That extra pulls in `mlx-lm` (MagenticBrain) and `mlx-vlm` (Fara). Fara is a vision-language model; `mlx-lm` alone is not enough.
+
+### D2. Start the servers
+
+```bash
+magentic-ui mlx-serve
+```
+
+This starts two processes and prints the values to paste into MagenticLite:
+
+| Role | Default URL | Default model name |
+|------|-------------|--------------------|
+| Orchestrator | `http://127.0.0.1:8100/v1` | `mlx-community/MagenticBrain-8bit` |
+| Browser use | `http://127.0.0.1:8101/v1` | `mlx-community/Fara1.5-9B-8bit` |
+
+Useful flags: `--role brain` / `--role fara`, `--brain-port`, `--fara-port`, `--brain-model`, `--fara-model`. Weights download into the Hugging Face cache on first launch.
+
+Leave this terminal running. In another terminal, start MagenticLite as usual (`magentic-ui --port 8081`).
+
+### D3. Connect MagenticLite
+
+Open MagenticLite and fill in **Settings → Models** (or first-run onboarding):
+
+| Field        | Browser use model (Fara)                    | Orchestrator model (MagenticBrain)                 |
+| ------------ | ------------------------------------------- | -------------------------------------------------- |
+| Endpoint URL | `http://127.0.0.1:8101/v1`                  | `http://127.0.0.1:8100/v1`                         |
+| Model Name   | `mlx-community/Fara1.5-9B-8bit`             | `mlx-community/MagenticBrain-8bit`                 |
+| API Key      | `not-needed`                                | `not-needed`                                       |
+
+Click **Verify & Save**. Verification only probes `GET /v1/models`; it does not exercise tool calling or vision.
+
+A commented YAML snippet lives in [`config.yaml.example`](../config.yaml.example).
+
+### D4. Caveats
+
+- Two resident 8-bit models plus the browser VM need a lot of unified memory. If the Mac is tight, run `--role brain` or `--role fara` and MagenticLite's `omniagent_only` / `websurfer_only` agent mode.
+- `mlx_lm.server` may put MagenticBrain tool calls in the OpenAI-native `tool_calls` field instead of leaving `<tool_call>` XML in `message.content`. OmniAgent currently parses tools from content; if the orchestrator *talks about* `delegate_cua` but never runs it, that is this mismatch — not a down Fara server.
+- Community MLX quants are sibling weights of `microsoft/MagenticBrain` and `microsoft/Fara1.5-9B`. Quality and tool/vision fidelity can differ from the documented vLLM deployments.
 
 ---
 

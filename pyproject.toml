@@ -59,6 +59,13 @@ Homepage = "https://github.com/microsoft/magentic-ui"
 Repository = "https://github.com/microsoft/magentic-ui"
 Issues = "https://github.com/microsoft/magentic-ui/issues"
 
+[project.optional-dependencies]
+# Apple Silicon only. Linux `uv sync --all-extras` skips these via markers.
+mlx = [
+    "mlx-lm>=0.31.3; sys_platform == 'darwin'",
+    "mlx-vlm>=0.6.15; sys_platform == 'darwin'",
+]
+
 [project.scripts]
 magentic = "magentic_ui.backend.cli:run"
 magentic-ui = "magentic_ui.backend.cli:run"

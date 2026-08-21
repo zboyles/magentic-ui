@@ -8,6 +8,7 @@ from pathlib import Path
 import logging
 
 from ..version import VERSION
+from .mlx_serve import register as register_mlx_serve
 
 # Configure basic logging to show only errors
 logging.basicConfig(level=logging.ERROR)
@@ -15,6 +16,7 @@ logging.basicConfig(level=logging.ERROR)
 # Create a Typer application instance with a descriptive help message
 # This is the main entry point for CLI commands
 app = typer.Typer(help="MagenticLite: A human-centered interface for web agents.")
+register_mlx_serve(app)
 
 # Ignore deprecation warnings from websockets
 warnings.filterwarnings("ignore", message="websockets.legacy is deprecated*")

@@ -49,6 +49,22 @@ magentic-ui --port 8082
 - Confirm your user is in the `kvm` group: `groups | grep -q kvm && echo ok`. If not, run `sudo usermod -aG kvm $USER` and restart your shell.
 - Without KVM the VM falls back to software emulation, which is significantly slower but should still work.
 
+### Localhost web app is unreachable from the agent browser
+
+The embedded browser runs inside the Quicksand VM. `http://localhost:3000` there is the VM, not your machine, so you get `ERR_CONNECTION_REFUSED`. `.local` mDNS names also fail across this NAT.
+
+The host is reachable as `http://10.0.2.2:<port>`. If the app still 403s API routes, it is likely allowlisting `Origin: http://localhost:<port>` and rejecting the gateway origin.
+
+Start MagenticLite with an origin-rewrite proxy:
+
+```bash
+magentic-ui --port 8081 --host-proxy 3000
+```
+
+Then in the agent (or takeover) open **`http://10.0.2.2:3100`**, not `:3000`. The proxy forwards to `localhost:3000` and rewrites `Origin` / `Referer` / `Host` to `http://localhost:3000`. Change the listen port with `--host-proxy-listen-port`. Standalone: `magentic-ui host-proxy --upstream-port 3000`.
+
+You still need to sign in again on that origin if the app uses host-scoped cookies.
+
 ### Browser viewer is blank or unresponsive
 
 - Make sure the Quicksand VM is healthy (check the MagenticLite logs for `quicksand` errors).
